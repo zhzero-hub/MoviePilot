@@ -728,7 +728,7 @@ class TorrentSpider:
         self.torrents_info_array = []
         try:
             # 解析站点文本对象
-            html_doc = PyQuery(html_text)
+            html_doc = PyQuery("\n"+html_text)
             # 种子筛选器
             torrents_selector = self.list.get('selector', '')
             # 遍历种子html列表
