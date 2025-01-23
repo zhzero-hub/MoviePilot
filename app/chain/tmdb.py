@@ -1,10 +1,9 @@
 import random
 from typing import Optional, List
 
-from cachetools import cached, TTLCache
-
 from app import schemas
 from app.chain import ChainBase
+from app.core.cache import cached
 from app.core.context import MediaInfo
 from app.schemas import MediaType
 from app.utils.singleton import Singleton
@@ -37,6 +36,13 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         :return: TMDB信息列表
         """
         return self.run_module("tmdb_trending", page=page)
+
+    def tmdb_collection(self, collection_id: int) -> Optional[List[MediaInfo]]:
+        """
+        根据合集ID查询集合
+        :param collection_id:  合集ID
+        """
+        return self.run_module("tmdb_collection", collection_id=collection_id)
 
     def tmdb_seasons(self, tmdbid: int) -> List[schemas.TmdbSeason]:
         """
@@ -112,7 +118,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
         """
         return self.run_module("tmdb_person_credits", person_id=person_id, page=page)
 
-    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    @cached(maxsize=1, ttl=3600)
     def get_random_wallpager(self) -> Optional[str]:
         """
         获取随机壁纸，缓存1个小时
@@ -126,7 +132,7 @@ class TmdbChain(ChainBase, metaclass=Singleton):
                     return info.backdrop_path
         return None
 
-    @cached(cache=TTLCache(maxsize=1, ttl=3600))
+    @cached(maxsize=1, ttl=3600)
     def get_trending_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取所有流行壁纸

@@ -1,6 +1,7 @@
 import base64
 import re
 from datetime import datetime
+from time import time
 from typing import Optional, Tuple, Union, Dict
 from urllib.parse import urljoin
 
@@ -88,7 +89,7 @@ class SiteChain(ChainBase):
                     ))
             # 低分享率警告
             if userdata.ratio and float(userdata.ratio) < 1 and not bool(
-                    re.search(r"(贵宾|VIP?)", userdata.user_level, re.IGNORECASE)):
+                    re.search(r"(贵宾|VIP?)", userdata.user_level or "", re.IGNORECASE)):
                 self.post_message(Notification(
                     mtype=NotificationType.SiteMessage,
                     title=f"【站点分享率低预警】",
@@ -96,7 +97,7 @@ class SiteChain(ChainBase):
                 ))
         return userdata
 
-    def refresh_userdatas(self) -> Dict[str, SiteUserData]:
+    def refresh_userdatas(self) -> Optional[Dict[str, SiteUserData]]:
         """
         刷新所有站点的用户数据
         """
@@ -105,7 +106,7 @@ class SiteChain(ChainBase):
         result = {}
         for site in sites:
             if global_vars.is_system_stopped:
-                return
+                return None
             if site.get("is_active"):
                 userdata = self.refresh_userdata(site)
                 if userdata:
@@ -172,27 +173,37 @@ class SiteChain(ChainBase):
             "Content-Type": "application/json",
             "User-Agent": user_agent,
             "Accept": "application/json, text/plain, */*",
-            "Authorization": site.token
+            "Authorization": site.token,
+            "x-api-key": site.apikey,
+            "ts": str(int(time()))
         }
         res = RequestUtils(
             headers=headers,
             proxies=settings.PROXY if site.proxy else None,
             timeout=site.timeout or 15
         ).post_res(url=url)
+        state = False
+        message = "鉴权已过期或无效"
         if res and res.status_code == 200:
-            user_info = res.json()
-            if user_info and user_info.get("data"):
+            user_info = res.json() or {}
+            if user_info.get("data"):
                 # 更新最后访问时间
+                del headers["x-api-key"]
                 res = RequestUtils(headers=headers,
                                    timeout=site.timeout or 15,
                                    proxies=settings.PROXY if site.proxy else None,
                                    referer=f"{site.url}index"
                                    ).post_res(url=f"https://api.{domain}/api/member/updateLastBrowse")
-                if res:
-                    return True, "连接成功"
-                else:
-                    return True, f"连接成功，但更新状态失败"
-        return False, "鉴权已过期或无效"
+                state = True
+                message = "连接成功，但更新状态失败"
+                if res and res.status_code == 200:
+                    update_info = res.json() or {}
+                    if "code" in update_info and int(update_info["code"]) == 0:
+                        message = "连接成功"
+            elif user_info.get("message"):
+                # 使用馒头的错误提示
+                message = user_info.get("message")
+        return state, message
 
     @staticmethod
     def __yema_test(site: Site) -> Tuple[bool, str]:
@@ -319,6 +330,7 @@ class SiteChain(ChainBase):
                     continue
                 # 新增站点
                 domain_url = __indexer_domain(inx=indexer, sub_domain=domain)
+                proxy = False
                 res = RequestUtils(cookies=cookie,
                                    ua=settings.USER_AGENT
                                    ).get_res(url=domain_url)
@@ -336,16 +348,37 @@ class SiteChain(ChainBase):
                     logger.warn(f"站点 {indexer.get('name')} 连接状态码：{res.status_code}，无法添加站点")
                     continue
                 else:
-                    _fail_count += 1
-                    logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
-                    continue
+                    if not settings.PROXY_HOST:
+                        _fail_count += 1
+                        logger.warn(f"站点 {indexer.get('name')} 连接失败，无法添加站点")
+                        continue
+                    else:
+                        # 如果配置了代理，尝试通过代理重试
+                        logger.info(f"站点 {indexer.get('name')} 初次连接失败，尝试通过代理重试...")
+                        proxy = True
+                        res = RequestUtils(cookies=cookie,
+                                           ua=settings.USER_AGENT,
+                                           proxies=settings.PROXY
+                                           ).get_res(url=domain_url)
+                        if res and res.status_code in [200, 500, 403]:
+                            if not indexer.get("public") and not SiteUtils.is_logged_in(res.text):
+                                logger.warn(f"站点 {indexer.get('name')} 登录失败，即使通过代理，无法添加站点")
+                                _fail_count += 1
+                                continue
+                            logger.info(f"站点 {indexer.get('name')} 通过代理连接成功")
+                        else:
+                            logger.warn(f"站点 {indexer.get('name')} 通过代理连接失败，无法添加站点")
+                            _fail_count += 1
+                            continue
+
                 # 获取rss地址
                 rss_url = None
                 if not indexer.get("public") and domain_url:
                     # 自动生成rss地址
                     rss_url, errmsg = self.rsshelper.get_rss_link(url=domain_url,
                                                                   cookie=cookie,
-                                                                  ua=settings.USER_AGENT)
+                                                                  ua=settings.USER_AGENT,
+                                                                  proxy=proxy)
                     if errmsg:
                         logger.warn(errmsg)
                 # 插入数据库
@@ -355,6 +388,7 @@ class SiteChain(ChainBase):
                                   domain=domain,
                                   cookie=cookie,
                                   rss=rss_url,
+                                  proxy=1 if proxy else 0,
                                   public=1 if indexer.get("public") else 0)
                 _add_count += 1
 

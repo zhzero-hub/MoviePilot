@@ -15,10 +15,11 @@ from app.db import get_db
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.models.user import User
+from app.db.systemconfig_oper import SystemConfigOper
 from app.db.user_oper import get_current_active_user
 from app.helper.subscribe import SubscribeHelper
 from app.scheduler import Scheduler
-from app.schemas.types import MediaType, EventType
+from app.schemas.types import MediaType, EventType, SystemConfigKey
 
 router = APIRouter()
 
@@ -122,6 +123,11 @@ def update_subscribe(
     if subscribe_in.total_episode != subscribe.total_episode:
         subscribe_dict["manual_total_episode"] = 1
     subscribe.update(db, subscribe_dict)
+    # 发送订阅调整事件
+    eventmanager.send_event(EventType.SubscribeModified, {
+        "subscribe_id": subscribe.id,
+        "subscribe_info": subscribe_dict,
+    })
     return schemas.Response(success=True)
 
 
@@ -462,6 +468,17 @@ def subscribe_share(
     return schemas.Response(success=state, message=errmsg)
 
 
+@router.delete("/share/{share_id}", summary="删除分享", response_model=schemas.Response)
+def subscribe_share_delete(
+        share_id: int,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    删除分享
+    """
+    state, errmsg = SubscribeHelper().share_delete(share_id=share_id)
+    return schemas.Response(success=state, message=errmsg)
+
+
 @router.post("/fork", summary="复用订阅", response_model=schemas.Response)
 def subscribe_fork(
         sub: schemas.SubscribeShare,
@@ -479,6 +496,42 @@ def subscribe_fork(
     if result.success:
         SubscribeHelper().sub_fork(share_id=sub.id)
     return result
+
+
+@router.get("/follow", summary="查询已Follow的订阅分享人", response_model=List[str])
+def followed_subscribers(_: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    查询已Follow的订阅分享人
+    """
+    return SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
+
+
+@router.post("/follow", summary="Follow订阅分享人", response_model=schemas.Response)
+def follow_subscriber(
+        share_uid: str = None,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    Follow订阅分享人
+    """
+    subscribers = SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
+    if share_uid and share_uid not in subscribers:
+        subscribers.append(share_uid)
+        SystemConfigOper().set(SystemConfigKey.FollowSubscribers, subscribers)
+    return schemas.Response(success=True)
+
+
+@router.delete("/follow", summary="取消Follow订阅分享人", response_model=schemas.Response)
+def unfollow_subscriber(
+        share_uid: str = None,
+        _: schemas.TokenPayload = Depends(verify_token)) -> Any:
+    """
+    取消Follow订阅分享人
+    """
+    subscribers = SystemConfigOper().get(SystemConfigKey.FollowSubscribers) or []
+    if share_uid and share_uid in subscribers:
+        subscribers.remove(share_uid)
+        SystemConfigOper().set(SystemConfigKey.FollowSubscribers, subscribers)
+    return schemas.Response(success=True)
 
 
 @router.get("/shares", summary="查询分享的订阅", response_model=List[schemas.SubscribeShare])

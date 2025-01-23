@@ -15,7 +15,6 @@ from app.chain.recommend import RecommendChain
 from app.chain.site import SiteChain
 from app.chain.subscribe import SubscribeChain
 from app.chain.tmdb import TmdbChain
-from app.chain.torrents import TorrentsChain
 from app.chain.transfer import TransferChain
 from app.core.config import settings
 from app.core.event import EventManager
@@ -91,6 +90,11 @@ class Scheduler(metaclass=Singleton):
             "subscribe_refresh": {
                 "name": "订阅刷新",
                 "func": SubscribeChain().refresh,
+                "running": False,
+            },
+            "subscribe_follow": {
+                "name": "关注的订阅分享",
+                "func": SubscribeChain().follow,
                 "running": False,
             },
             "transfer": {
@@ -241,6 +245,18 @@ class Scheduler(metaclass=Singleton):
                     'job_id': 'subscribe_refresh'
                 }
             )
+
+        # 关注订阅分享（每1小时）
+        self._scheduler.add_job(
+            self.start,
+            "interval",
+            id="subscribe_follow",
+            name="关注的订阅分享",
+            hours=1,
+            kwargs={
+                'job_id': 'subscribe_follow'
+            }
+        )
 
         # 下载器文件转移（每5分钟）
         self._scheduler.add_job(
@@ -549,7 +565,6 @@ class Scheduler(metaclass=Singleton):
         """
         清理缓存
         """
-        TorrentsChain().clear_cache()
         SchedulerChain().clear_cache()
 
     def user_auth(self):
@@ -587,6 +602,6 @@ class Scheduler(metaclass=Singleton):
 
         else:
             self._auth_count += 1
-            logger.error(f"用户认证失败：{msg}，共失败 {self._auth_count} 次")
+            logger.error(f"用户认证失败，{msg}，共失败 {self._auth_count} 次")
             if self._auth_count >= __max_try__:
                 logger.error("用户认证失败次数过多，将不再尝试认证！")

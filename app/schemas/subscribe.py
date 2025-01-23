@@ -88,6 +88,8 @@ class SubscribeShare(BaseModel):
     share_comment: Optional[str] = None
     # 分享人
     share_user: Optional[str] = None
+    # 分享人唯一ID
+    share_uid: Optional[str] = None
     # 订阅名称
     name: Optional[str] = None
     # 订阅年份
@@ -127,6 +129,8 @@ class SubscribeShare(BaseModel):
     custom_words: Optional[str] = None
     # 自定义媒体类别
     media_category: Optional[str] = None
+    # 复用人次
+    count: Optional[int] = 0
 
 
 class SubscribeDownloadFileInfo(BaseModel):

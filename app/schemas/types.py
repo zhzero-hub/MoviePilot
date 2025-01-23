@@ -5,6 +5,7 @@ from enum import Enum
 class MediaType(Enum):
     MOVIE = '电影'
     TV = '电视剧'
+    COLLECTION = '系列'
     UNKNOWN = '未知'
 
 
@@ -48,6 +49,8 @@ class EventType(Enum):
     NoticeMessage = "notice.message"
     # 订阅已添加
     SubscribeAdded = "subscribe.added"
+    # 订阅已调整
+    SubscribeModified = "subscribe.modified"
     # 订阅已删除
     SubscribeDeleted = "subscribe.deleted"
     # 订阅已完成
@@ -132,6 +135,8 @@ class SystemConfigKey(Enum):
     DefaultTvSubscribeConfig = "DefaultTvSubscribeConfig"
     # 用户站点认证参数
     UserSiteAuthParams = "UserSiteAuthParams"
+    # Follow订阅分享者
+    FollowSubscribers = "FollowSubscribers"
 
 
 # 处理进度Key字典

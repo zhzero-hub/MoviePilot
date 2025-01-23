@@ -72,7 +72,7 @@ def search(title: str,
     """
     模糊搜索媒体/人物信息列表 media：媒体信息，person：人物信息
     """
-    def __get_source(obj: Union[dict, schemas.MediaPerson]):
+    def __get_source(obj: Union[schemas.MediaInfo, schemas.MediaPerson, dict]):
         """
         获取对象属性
         """
@@ -85,6 +85,8 @@ def search(title: str,
         _, medias = MediaChain().search(title=title)
         if medias:
             result = [media.to_dict() for media in medias]
+    elif type == "collection":
+        result = MediaChain().search_collections(name=title)
     else:
         result = MediaChain().search_persons(name=title)
     if result:
@@ -117,7 +119,7 @@ def scrape(fileitem: schemas.FileItem,
         if not scrape_path.exists():
             return schemas.Response(success=False, message="刮削路径不存在")
     # 手动刮削
-    chain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo)
+    chain.scrape_metadata(fileitem=fileitem, meta=meta, mediainfo=mediainfo, overwrite=True)
     return schemas.Response(success=True, message=f"{fileitem.path} 刮削完成")
 
 

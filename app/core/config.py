@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 from dotenv import set_key
 from pydantic import BaseModel, BaseSettings, validator, Field
 
-from app.log import logger
+from app.log import logger, log_settings, LogConfigModel
 from app.utils.system import SystemUtils
 from app.utils.url import UrlUtils
 
@@ -71,6 +71,12 @@ class ConfigModel(BaseModel):
     DB_TIMEOUT: int = 60
     # SQLite 是否启用 WAL 模式，默认关闭
     DB_WAL_ENABLE: bool = False
+    # 缓存类型，支持 cachetools 和 redis，默认使用 cachetools
+    CACHE_BACKEND_TYPE: str = "cachetools"
+    # 缓存连接字符串，仅外部缓存（如 Redis、Memcached）需要
+    CACHE_BACKEND_URL: Optional[str] = None
+    # Redis 缓存最大内存限制，未配置时，如开启大内存模式时为 "1024mb"，未开启时为 "256mb"
+    CACHE_REDIS_MAXMEMORY: Optional[str] = None
     # 配置文件目录
     CONFIG_DIR: Optional[str] = None
     # 超级管理员
@@ -244,7 +250,7 @@ class ConfigModel(BaseModel):
     TOKENIZED_SEARCH: bool = False
 
 
-class Settings(BaseSettings, ConfigModel):
+class Settings(BaseSettings, ConfigModel, LogConfigModel):
     """
     系统配置类
     """
@@ -351,7 +357,7 @@ class Settings(BaseSettings, ConfigModel):
             return default, True
 
     @validator('*', pre=True, always=True)
-    def generic_type_validator(cls, value: Any, field):
+    def generic_type_validator(cls, value: Any, field):  # noqa
         """
         通用校验器，尝试将配置值转换为期望的类型
         """
@@ -406,6 +412,8 @@ class Settings(BaseSettings, ConfigModel):
                 # 仅成功更新配置时，才更新内存
                 if success:
                     setattr(self, key, converted_value)
+                    if hasattr(log_settings, key):
+                        setattr(log_settings, key, converted_value)
                 return success, message
             return True, ""
         except Exception as e:
@@ -416,8 +424,21 @@ class Settings(BaseSettings, ConfigModel):
         更新多个配置项
         """
         results = {}
+        log_updated, plugin_monitor_updated = False, False
         for k, v in env.items():
             results[k] = self.update_setting(k, v)
+            if hasattr(log_settings, k):
+                log_updated = True
+            if k in ["PLUGIN_AUTO_RELOAD", "DEV"]:
+                plugin_monitor_updated = True
+        # 本次更新存在日志配置项更新，需要重新加载日志配置
+        if log_updated:
+            logger.update_loggers()
+        # 本次更新存在插件监控配置项更新，需要重新加载插件监控
+        if plugin_monitor_updated:
+            # 解决顶层循环导入问题
+            from app.core.plugin import PluginManager
+            PluginManager().reload_monitor()
         return results
 
     @property

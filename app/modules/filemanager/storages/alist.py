@@ -4,10 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 
-from cachetools import cached, TTLCache
 from requests import Response
 
 from app import schemas
+from app.core.cache import cached
 from app.core.config import settings
 from app.log import logger
 from app.modules.filemanager.storages import StorageBase
@@ -67,7 +67,7 @@ class Alist(StorageBase, metaclass=Singleton):
         return self.__generate_token
 
     @property
-    @cached(cache=TTLCache(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5))
+    @cached(maxsize=1, ttl=60 * 60 * 24 * 2 - 60 * 5)
     def __generate_token(self) -> str:
         """
         使用账号密码生成一个临时token
@@ -553,7 +553,7 @@ class Alist(StorageBase, metaclass=Singleton):
         :param new_name: 上传后文件名
         :param task: 是否为任务，默认为False避免未完成上传时对文件进行操作
         """
-        encoded_path = UrlUtils.quote(fileitem.path + path.name)
+        encoded_path = UrlUtils.quote((Path(fileitem.path) / path.name).as_posix())
         headers = self.__get_header_with_token()
         headers.setdefault("Content-Type", "application/octet-stream")
         headers.setdefault("As-Task", str(task).lower())
@@ -569,7 +569,7 @@ class Alist(StorageBase, metaclass=Singleton):
             return
 
         new_item = self.get_item(Path(fileitem.path) / path.name)
-        if new_name and new_name != path.name:
+        if new_item and new_name and new_name != path.name:
             if self.rename(new_item, new_name):
                 return self.get_item(Path(new_item.path).with_name(new_name))
 

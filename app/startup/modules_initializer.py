@@ -2,6 +2,7 @@ import sys
 
 from fastapi import FastAPI
 
+from app.core.cache import close_cache
 from app.core.config import global_vars, settings
 from app.core.module import ModuleManager
 from app.log import logger
@@ -88,7 +89,7 @@ def user_auth():
     if status:
         logger.info(f"{msg} 用户认证成功")
     else:
-        logger.info(f"用户认证失败：{msg}")
+        logger.info(f"用户认证失败，{msg}")
 
 
 def check_auth():
@@ -129,6 +130,8 @@ def shutdown_modules(_: FastAPI):
     Monitor().stop()
     # 停止线程池
     ThreadHelper().shutdown()
+    # 停止缓存连接
+    close_cache()
     # 停止数据库连接
     close_database()
     # 停止前端服务

@@ -109,7 +109,7 @@ class FileManagerModule(_ModuleBase):
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         pass
 
-    def support_transtype(self, storage: str) -> Optional[Dict[str, str]]:
+    def support_transtype(self, storage: str) -> Optional[dict]:
         """
         支持的整理方式
         """
@@ -368,10 +368,7 @@ class FileManagerModule(_ModuleBase):
             # 覆盖模式
             overwrite_mode = target_directory.overwrite_mode
             # 是否需要刮削
-            if scrape is None:
-                need_scrape = target_directory.scraping
-            else:
-                need_scrape = scrape
+            need_scrape = target_directory.scraping if scrape is None else scrape
             # 目标存储类型
             if not target_storage:
                 target_storage = target_directory.library_storage
@@ -923,18 +920,6 @@ class FileManagerModule(_ModuleBase):
         rename_format = settings.TV_RENAME_FORMAT \
             if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
 
-        # 计算重命名中的文件夹层数
-        rename_format_level = len(rename_format.split("/")) - 1
-
-        if rename_format_level < 1:
-            # 重命名格式不合法
-            logger.error(f"重命名格式不合法：{rename_format}")
-            return TransferInfo(success=False,
-                                message=f"重命名格式不合法",
-                                fileitem=fileitem,
-                                transfer_type=transfer_type,
-                                need_notify=need_notify)
-
         # 判断是否为文件夹
         if fileitem.type == "dir":
             # 整理整个目录，一般为蓝光原盘
@@ -1014,12 +999,15 @@ class FileManagerModule(_ModuleBase):
             overflag = False
             # 目的操作对象
             target_oper: StorageBase = self.__get_storage_oper(target_storage)
+            # 计算重命名中的文件夹层级
+            rename_format_level = len(rename_format.split("/")) - 1
+            folder_path = new_file.parents[rename_format_level - 1]
             # 目标目录
-            target_diritem = target_oper.get_folder(new_file.parents[rename_format_level - 1])
+            target_diritem = target_oper.get_folder(folder_path)
             if not target_diritem:
-                logger.error(f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败")
+                logger.error(f"目标目录 {folder_path} 获取失败")
                 return TransferInfo(success=False,
-                                    message=f"目标目录 {new_file.parents[rename_format_level - 1]} 获取失败",
+                                    message=f"目标目录 {folder_path} 获取失败",
                                     fileitem=fileitem,
                                     fail_list=[fileitem.path],
                                     transfer_type=transfer_type,
@@ -1259,10 +1247,6 @@ class FileManagerModule(_ModuleBase):
             # 重命名格式
             rename_format = settings.TV_RENAME_FORMAT \
                 if mediainfo.type == MediaType.TV else settings.MOVIE_RENAME_FORMAT
-            # 计算重命名中的文件夹层数
-            rename_format_level = len(rename_format.split("/")) - 1
-            if rename_format_level < 1:
-                continue
             # 获取路径（重命名路径）
             target_path = self.get_rename_path(
                 path=dir_path,
@@ -1270,13 +1254,19 @@ class FileManagerModule(_ModuleBase):
                 rename_dict=self.__get_naming_dict(meta=MetaInfo(mediainfo.title),
                                                    mediainfo=mediainfo)
             )
+            # 计算重命名中的文件夹层数
+            rename_format_level = len(rename_format.split("/")) - 1
             # 取相对路径的第1层目录
             media_path = target_path.parents[rename_format_level - 1]
             # 检索媒体文件
             fileitem = storage_oper.get_item(media_path)
             if not fileitem:
                 continue
-            media_files = self.list_files(fileitem, True)
+            try:
+                media_files = self.list_files(fileitem, True)
+            except Exception as e:
+                logger.debug(f"获取媒体文件列表失败：{str(e)}")
+                continue
             if media_files:
                 for media_file in media_files:
                     if f".{media_file.extension.lower()}" in settings.RMT_MEDIAEXT:
